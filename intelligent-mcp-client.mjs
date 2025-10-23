@@ -116,7 +116,6 @@ Available MCP tools:
 ${availableTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
 Tool details:
-- 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
 - suggest_forms: Use when user wants to find forms or start discovery (requires user_input argument with what the user wants to do)
 - analyze_intent: Use when user has a specific insurance question/need (requires user_input argument)
 - answer_discovery_question: Use when user is answering a discovery question (requires answer argument)
