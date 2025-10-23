@@ -3,6 +3,8 @@ export const FORM_TEMPLATES = [
         id: 'beneficiary-change',
         title: 'Beneficiary Change Request',
         description: 'Change the beneficiary on your life insurance policy',
+        keywords: ['beneficiary', 'change beneficiary', 'update beneficiary', 'new beneficiary', 'primary beneficiary', 'secondary beneficiary', 'heir', 'inheritance'],
+        scenarios: ['I want to change my beneficiary', 'Need to update who gets my benefits', 'My beneficiary information is outdated'],
         elicitationSchema: {
             type: 'object',
             properties: {
@@ -63,6 +65,8 @@ export const FORM_TEMPLATES = [
         id: 'loan-form',
         title: 'Policy Loan Application',
         description: 'Apply for a loan against your life insurance policy',
+        keywords: ['loan', 'borrow', 'policy loan', 'cash advance', 'loan against policy', 'policy value', 'cash value loan'],
+        scenarios: ['I need a loan against my policy', 'Want to borrow money from my policy', 'Need cash from my policy value'],
         elicitationSchema: {
             type: 'object',
             properties: {
@@ -109,6 +113,8 @@ export const FORM_TEMPLATES = [
         id: 'reinstatement-application',
         title: 'Policy Reinstatement Application',
         description: 'Apply to reinstate a lapsed life insurance policy',
+        keywords: ['reinstate', 'reinstatement', 'lapsed policy', 'restore policy', 'reactivate', 'policy lapsed', 'bring back policy'],
+        scenarios: ['My policy lapsed and I want to reinstate it', 'Need to restore my cancelled policy', 'Want to reactivate my policy'],
         elicitationSchema: {
             type: 'object',
             properties: {
@@ -153,6 +159,8 @@ export const FORM_TEMPLATES = [
         id: 'surrender-form',
         title: 'Policy Surrender Form',
         description: 'Surrender your life insurance policy for cash value',
+        keywords: ['surrender', 'cash out', 'cancel policy', 'terminate policy', 'cash surrender', 'policy surrender', 'cash value'],
+        scenarios: ['I want to surrender my policy', 'Need to cash out my policy', 'Want to cancel and get cash value'],
         elicitationSchema: {
             type: 'object',
             properties: {
@@ -199,6 +207,8 @@ export const FORM_TEMPLATES = [
         id: 'non-forfeiture-option',
         title: 'Non-Forfeiture Option Change',
         description: 'Change the non-forfeiture option on your policy',
+        keywords: ['non-forfeiture', 'forfeiture option', 'paid-up', 'extended term', 'cash surrender option', 'policy options'],
+        scenarios: ['I want to change my non-forfeiture option', 'Need to update my policy options', 'Want to switch to paid-up or extended term'],
         elicitationSchema: {
             type: 'object',
             properties: {
@@ -238,6 +248,8 @@ export const FORM_TEMPLATES = [
         id: 'annuity-contract-change',
         title: 'Annuity Contract Change Request',
         description: 'Request changes to your annuity contract',
+        keywords: ['annuity', 'contract change', 'annuity change', 'payment frequency', 'investment allocation', 'annuity contract'],
+        scenarios: ['I want to change my annuity contract', 'Need to modify my annuity payments', 'Want to update my investment allocation'],
         elicitationSchema: {
             type: 'object',
             properties: {
@@ -283,6 +295,8 @@ export const FORM_TEMPLATES = [
         id: 'amendment-request',
         title: 'Policy Amendment Request',
         description: 'Request an amendment to your insurance policy',
+        keywords: ['amendment', 'policy amendment', 'change policy', 'modify policy', 'coverage change', 'rider', 'policy modification'],
+        scenarios: ['I want to amend my policy', 'Need to change my coverage', 'Want to add or remove a rider'],
         elicitationSchema: {
             type: 'object',
             properties: {

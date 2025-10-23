@@ -1,16 +1,10 @@
-export interface ElicitationQuestion {
-  fieldName: string;
+export interface DiscoveryQuestion {
+  id: string;
   question: string;
   description?: string;
-  type: 'text' | 'date' | 'boolean' | 'select';
-  required: boolean;
+  type: 'select' | 'boolean' | 'text';
   options?: string[];
-  validation?: {
-    minLength?: number;
-    maxLength?: number;
-    minimum?: number;
-    maximum?: number;
-  };
+  followUp?: Record<string, string>; // Maps answer to next question ID
 }
 
 export interface FormTemplate {
@@ -22,259 +16,243 @@ export interface FormTemplate {
     properties: Record<string, any>;
     required: string[];
   };
+  keywords: string[]; // Keywords for matching
+  scenarios: string[]; // Common scenarios this form addresses
 }
 
-export interface ElicitationState {
-  formId: string;
-  formTitle: string;
-  currentQuestionIndex: number;
+export interface DiscoveryState {
+  currentQuestionId: string | null;
   answers: Record<string, string>;
   isComplete: boolean;
-  questions: ElicitationQuestion[];
+  suggestedForms: string[];
 }
 
-export interface ValidationResult {
-  valid: boolean;
-  error?: string;
-  processedValue?: string;
-}
-
-export interface ProcessAnswerResult {
+export interface DiscoveryResult {
   success: boolean;
   error?: string;
   completed?: boolean;
+  suggestedForms?: string[];
 }
 
 export interface ProgressInfo {
-  answered: number;
-  remaining: number;
-  total: number;
-  percentage: number;
+  questionsAnswered: number;
+  formsNarrowed: number;
+  isComplete: boolean;
 }
 
 export interface FormSummary {
-  formId: string;
-  formTitle: string;
+  suggestedForms: string[];
   answers: Record<string, string>;
   completed: boolean;
 }
 
 export class ElicitationEngine {
   private formTemplates: FormTemplate[];
-  private currentState: ElicitationState | null = null;
+  private discoveryQuestions: DiscoveryQuestion[];
+  private currentState: DiscoveryState | null = null;
 
   constructor(formTemplates: FormTemplate[]) {
     this.formTemplates = formTemplates;
+    this.discoveryQuestions = this.createDiscoveryQuestions();
   }
 
-  private convertSchemaToQuestions(schema: any): ElicitationQuestion[] {
-    const questions: ElicitationQuestion[] = [];
-    const properties = schema.properties || {};
-    const required = schema.required || [];
-
-    for (const [fieldName, fieldSchema] of Object.entries(properties)) {
-      const field = fieldSchema as any;
-      let type: 'text' | 'date' | 'boolean' | 'select' = 'text';
-      let options: string[] | undefined;
-
-      if (field.type === 'boolean') {
-        type = 'boolean';
-      } else if (field.format === 'date') {
-        type = 'date';
-      } else if (field.enum && Array.isArray(field.enum)) {
-        type = 'select';
-        options = field.enum;
-      }
-
-      questions.push({
-        fieldName,
-        question: field.title || fieldName,
-        description: field.description,
-        type,
-        required: required.includes(fieldName),
-        options,
-        validation: {
-          minLength: field.minLength,
-          maxLength: field.maxLength,
-          minimum: field.minimum,
-          maximum: field.maximum,
+  private createDiscoveryQuestions(): DiscoveryQuestion[] {
+    return [
+      {
+        id: 'intent',
+        question: 'What would you like to do with your insurance policy?',
+        type: 'select',
+        options: [
+          'Change beneficiary information',
+          'Take a loan against my policy',
+          'Surrender my policy',
+          'Change policy details',
+          'Apply for reinstatement',
+          'Other'
+        ],
+        followUp: {
+          'Change beneficiary information': 'beneficiary-type',
+          'Take a loan against my policy': 'loan-type',
+          'Surrender my policy': 'surrender-type',
+          'Change policy details': 'change-type',
+          'Apply for reinstatement': 'reinstatement-reason',
+          'Other': 'describe-need'
         }
-      });
-    }
-
-    return questions;
+      },
+      {
+        id: 'beneficiary-type',
+        question: 'What type of beneficiary change do you need?',
+        type: 'select',
+        options: [
+          'Change primary beneficiary',
+          'Add or change contingent beneficiary',
+          'Update beneficiary percentage',
+          'All of the above'
+        ]
+      },
+      {
+        id: 'loan-type',
+        question: 'What type of loan are you looking for?',
+        type: 'select',
+        options: [
+          'Policy loan (borrow against cash value)',
+          'Automatic premium loan',
+          'Other loan option'
+        ]
+      },
+      {
+        id: 'surrender-type',
+        question: 'What type of surrender are you considering?',
+        type: 'select',
+        options: [
+          'Full surrender (cancel policy)',
+          'Partial surrender (withdraw some cash value)',
+          'Non-forfeiture option (keep some benefits)'
+        ]
+      },
+      {
+        id: 'change-type',
+        question: 'What policy details would you like to change?',
+        type: 'select',
+        options: [
+          'Contact information',
+          'Payment method or frequency',
+          'Coverage amount',
+          'Policy options or riders',
+          'Other changes'
+        ]
+      },
+      {
+        id: 'reinstatement-reason',
+        question: 'Why do you need to reinstate your policy?',
+        type: 'select',
+        options: [
+          'Policy lapsed due to non-payment',
+          'Policy was surrendered and I want it back',
+          'Other reinstatement situation'
+        ]
+      },
+      {
+        id: 'describe-need',
+        question: 'Please describe what you need help with:',
+        type: 'text'
+      }
+    ];
   }
 
-  startElicitation(formId: string): { success: boolean; error?: string } {
-    const template = this.formTemplates.find(t => t.id === formId);
-    if (!template) {
-      return { success: false, error: `Form template not found: ${formId}` };
-    }
-
-    const questions = this.convertSchemaToQuestions(template.elicitationSchema);
-    
+  startDiscovery(): { success: boolean; error?: string } {
     this.currentState = {
-      formId: template.id,
-      formTitle: template.title,
-      currentQuestionIndex: 0,
+      currentQuestionId: 'intent',
       answers: {},
       isComplete: false,
-      questions
+      suggestedForms: []
     };
 
     return { success: true };
   }
 
-  getCurrentQuestion(): ElicitationQuestion | null {
-    if (!this.currentState || this.currentState.isComplete) {
+  getCurrentQuestion(): DiscoveryQuestion | null {
+    if (!this.currentState || !this.currentState.currentQuestionId) {
       return null;
     }
 
-    if (this.currentState.currentQuestionIndex >= this.currentState.questions.length) {
-      this.currentState.isComplete = true;
-      return null;
-    }
-
-    return this.currentState.questions[this.currentState.currentQuestionIndex];
+    return this.discoveryQuestions.find(q => q.id === this.currentState!.currentQuestionId) || null;
   }
 
-  processAnswer(answer: string): ProcessAnswerResult {
+  processAnswer(answer: string): DiscoveryResult {
     if (!this.currentState) {
-      return { success: false, error: 'No active elicitation session' };
+      return { success: false, error: 'No active discovery session' };
     }
 
     const currentQuestion = this.getCurrentQuestion();
     if (!currentQuestion) {
-      return { success: false, error: 'No current question or elicitation complete' };
-    }
-
-    const validation = this.validateAnswer(currentQuestion, answer);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
+      return { success: false, error: 'No current question found' };
     }
 
     // Store the answer
-    this.currentState.answers[currentQuestion.fieldName] = validation.processedValue || answer;
+    this.currentState.answers[currentQuestion.id] = answer;
+
+    // Determine next question or completion
+    let nextQuestionId: string | null = null;
     
-    // Move to next question
-    this.currentState.currentQuestionIndex++;
+    if (currentQuestion.followUp && currentQuestion.followUp[answer]) {
+      nextQuestionId = currentQuestion.followUp[answer];
+    }
+
+    // Update state
+    this.currentState.currentQuestionId = nextQuestionId;
     
-    // Check if complete
-    if (this.currentState.currentQuestionIndex >= this.currentState.questions.length) {
+    // If no next question, complete the discovery and suggest forms
+    if (!nextQuestionId) {
       this.currentState.isComplete = true;
-      return { success: true, completed: true };
+      this.currentState.suggestedForms = this.suggestFormsBasedOnAnswers();
     }
 
-    return { success: true, completed: false };
+    return {
+      success: true,
+      completed: this.currentState.isComplete,
+      suggestedForms: this.currentState.isComplete ? this.currentState.suggestedForms : undefined
+    };
   }
 
-  validateAnswer(question: ElicitationQuestion, answer: string): ValidationResult {
-    // Check if required
-    if (question.required && (!answer || answer.trim() === '')) {
-      return { valid: false, error: 'This field is required' };
-    }
+  private suggestFormsBasedOnAnswers(): string[] {
+    const answers = this.currentState!.answers;
+    const suggestions: string[] = [];
 
-    // If not required and empty, allow it
-    if (!question.required && (!answer || answer.trim() === '')) {
-      return { valid: true, processedValue: '' };
-    }
-
-    switch (question.type) {
-      case 'date':
-        return this.validateDate(answer);
-      case 'boolean':
-        return this.validateBoolean(answer);
-      case 'select':
-        return this.validateSelect(question, answer);
-      case 'text':
-      default:
-        return this.validateText(question, answer);
-    }
-  }
-
-  private validateDate(answer: string): ValidationResult {
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(answer)) {
-      return { valid: false, error: 'Please enter date in YYYY-MM-DD format' };
-    }
-
-    const date = new Date(answer);
-    if (isNaN(date.getTime())) {
-      return { valid: false, error: 'Please enter a valid date' };
-    }
-
-    return { valid: true, processedValue: answer };
-  }
-
-  private validateBoolean(answer: string): ValidationResult {
-    const normalized = answer.toLowerCase().trim();
-    if (['true', 'yes', 'y', '1'].includes(normalized)) {
-      return { valid: true, processedValue: 'true' };
-    }
-    if (['false', 'no', 'n', '0'].includes(normalized)) {
-      return { valid: true, processedValue: 'false' };
-    }
-    return { valid: false, error: 'Please enter yes/no, true/false, or y/n' };
-  }
-
-  private validateSelect(question: ElicitationQuestion, answer: string): ValidationResult {
-    if (!question.options) {
-      return { valid: false, error: 'No options available for this question' };
-    }
-
-    const normalizedAnswer = answer.trim();
-    const matchedOption = question.options.find(option => 
-      option.toLowerCase() === normalizedAnswer.toLowerCase()
-    );
-
-    if (!matchedOption) {
-      return { 
-        valid: false, 
-        error: `Please select one of: ${question.options.join(', ')}` 
-      };
-    }
-
-    return { valid: true, processedValue: matchedOption };
-  }
-
-  private validateText(question: ElicitationQuestion, answer: string): ValidationResult {
-    const trimmed = answer.trim();
+    // Map answers to form IDs
+    const intent = answers['intent'];
     
-    if (question.validation?.minLength && trimmed.length < question.validation.minLength) {
-      return { 
-        valid: false, 
-        error: `Minimum length is ${question.validation.minLength} characters` 
-      };
-    }
-    
-    if (question.validation?.maxLength && trimmed.length > question.validation.maxLength) {
-      return { 
-        valid: false, 
-        error: `Maximum length is ${question.validation.maxLength} characters` 
-      };
+    if (intent === 'Change beneficiary information') {
+      suggestions.push('beneficiary-change');
+    } else if (intent === 'Take a loan against my policy') {
+      suggestions.push('loan-form');
+    } else if (intent === 'Surrender my policy') {
+      const surrenderType = answers['surrender-type'];
+      if (surrenderType === 'Non-forfeiture option (keep some benefits)') {
+        suggestions.push('non-forfeiture-option');
+      } else {
+        suggestions.push('surrender-form');
+      }
+    } else if (intent === 'Apply for reinstatement') {
+      suggestions.push('reinstatement-application');
+    } else if (intent === 'Change policy details') {
+      suggestions.push('amendment-request');
     }
 
-    return { valid: true, processedValue: trimmed };
+    // If no specific match, suggest based on keywords in text answers
+    if (suggestions.length === 0) {
+      const textAnswers = Object.values(answers).join(' ').toLowerCase();
+      
+      for (const template of this.formTemplates) {
+        if (template.keywords?.some(keyword => textAnswers.includes(keyword.toLowerCase()))) {
+          suggestions.push(template.id);
+        }
+      }
+    }
+
+    return suggestions.length > 0 ? suggestions : ['beneficiary-change']; // Default fallback
   }
 
-  getElicitationState(): ElicitationState | null {
+  getDiscoveryState(): DiscoveryState | null {
     return this.currentState;
   }
 
   getProgress(): ProgressInfo {
     if (!this.currentState) {
-      return { answered: 0, remaining: 0, total: 0, percentage: 0 };
+      return { questionsAnswered: 0, formsNarrowed: 0, isComplete: false };
     }
 
-    const answered = this.currentState.currentQuestionIndex;
-    const total = this.currentState.questions.length;
-    const remaining = total - answered;
-    const percentage = total > 0 ? Math.round((answered / total) * 100) : 0;
+    const questionsAnswered = Object.keys(this.currentState.answers).length;
+    const formsNarrowed = this.currentState.suggestedForms.length;
 
-    return { answered, remaining, total, percentage };
+    return {
+      questionsAnswered,
+      formsNarrowed,
+      isComplete: this.currentState.isComplete
+    };
   }
 
-  resetElicitation(): void {
+  resetDiscovery(): void {
     this.currentState = null;
   }
 
@@ -284,9 +262,8 @@ export class ElicitationEngine {
     }
 
     return {
-      formId: this.currentState.formId,
-      formTitle: this.currentState.formTitle,
-      answers: { ...this.currentState.answers },
+      suggestedForms: this.currentState.suggestedForms,
+      answers: this.currentState.answers,
       completed: this.currentState.isComplete
     };
   }

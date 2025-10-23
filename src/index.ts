@@ -304,36 +304,23 @@ server.registerTool(
   }
 );
 
-// Elicitation Tools
+// Discovery-based Elicitation Tools
 server.registerTool(
-  'start_elicitation',
+  'start_form_discovery',
   {
-    title: 'Start Elicitation',
-    description: 'Start an interactive form completion session for a specific form',
-    inputSchema: {
-      form_id: z.enum(getAvailableForms() as [string, ...string[]]).describe('The ID of the form to start elicitation for'),
-    }
+    title: 'Start Form Discovery',
+    description: 'Start an interactive session to discover the right form based on user needs',
+    inputSchema: {}
   },
-  async ({ form_id }) => {
+  async () => {
     try {
-      const result = elicitationEngine.startElicitation(form_id);
-      if (!result.success) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error starting elicitation: ${result.error}`
-            }
-          ]
-        };
-      }
-
+      const result = elicitationEngine.startDiscovery();
       const currentQuestion = elicitationEngine.getCurrentQuestion();
       return {
         content: [
           {
             type: 'text',
-            text: `Elicitation started for form: ${form_id}\n\nFirst question: ${currentQuestion?.question || 'No questions available'}\n${currentQuestion?.description ? `Description: ${currentQuestion.description}` : ''}\n${currentQuestion?.type === 'select' && currentQuestion.options ? `Options: ${currentQuestion.options.join(', ')}` : ''}`
+            text: `Started form discovery session\n\nFirst question: ${currentQuestion?.question || 'No questions available'}\n${currentQuestion?.description ? `Description: ${currentQuestion.description}` : ''}\n${currentQuestion?.type === 'select' && currentQuestion.options ? `Options: ${currentQuestion.options.join(', ')}` : ''}`
           }
         ]
       };
@@ -342,7 +329,7 @@ server.registerTool(
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
           }
         ]
       };
@@ -351,40 +338,40 @@ server.registerTool(
 );
 
 server.registerTool(
-  'get_current_question',
+  'get_discovery_question',
   {
-    title: 'Get Current Question',
-    description: 'Get the current question in the elicitation session',
+    title: 'Get Discovery Question',
+    description: 'Get the current question in the form discovery session',
     inputSchema: {}
   },
   async () => {
     try {
       const question = elicitationEngine.getCurrentQuestion();
-      if (!question) {
+      if (question) {
         return {
           content: [
             {
               type: 'text',
-              text: 'No active elicitation session or no current question available.'
+              text: `Current question: ${question.question}\n${question.description ? `Description: ${question.description}` : ''}\n${question.type === 'select' && question.options ? `Options: ${question.options.join(', ')}` : ''}`
+            }
+          ]
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No active discovery session or session is complete'
             }
           ]
         };
       }
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Current question: ${question.question}\n${question.description ? `Description: ${question.description}` : ''}\n${question.type === 'select' && question.options ? `Options: ${question.options.join(', ')}` : ''}\nRequired: ${question.required ? 'Yes' : 'No'}`
-          }
-        ]
-      };
     } catch (error) {
       return {
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
           }
         ]
       };
@@ -393,35 +380,33 @@ server.registerTool(
 );
 
 server.registerTool(
-  'answer_question',
+  'answer_discovery_question',
   {
-    title: 'Answer Question',
-    description: 'Provide an answer to the current question in the elicitation session',
+    title: 'Answer Discovery Question',
+    description: 'Provide an answer to the current discovery question',
     inputSchema: {
-      answer: z.string().describe('The answer to the current question'),
+      answer: z.string().describe('The answer to the current discovery question'),
     }
   },
   async ({ answer }) => {
     try {
       const result = elicitationEngine.processAnswer(answer);
       
-      if (!result.success) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Invalid answer: ${result.error}`
-            }
-          ]
-        };
-      }
-
       if (result.completed) {
+        const state = elicitationEngine.getDiscoveryState();
+        const suggestedForms = state?.suggestedForms || [];
+        const formsText = suggestedForms.length > 0 
+          ? suggestedForms.map((formId, index) => {
+              const template = getFormTemplate(formId);
+              return `${index + 1}. ${template?.title || formId} (${formId})`;
+            }).join('\n')
+          : 'No specific forms recommended based on your answers.';
+        
         return {
           content: [
             {
               type: 'text',
-              text: 'Form completion finished! All questions have been answered. Use get_form_summary to see the completed form data.'
+              text: `Discovery session completed!\n\nRecommended forms:\n${formsText}\n\nUse get_form_pdf to retrieve specific forms or get_form_schema to see required fields.`
             }
           ]
         };
@@ -432,7 +417,7 @@ server.registerTool(
         content: [
           {
             type: 'text',
-            text: `Answer accepted.\n\nNext question: ${nextQuestion?.question || 'No more questions'}\n${nextQuestion?.description ? `Description: ${nextQuestion.description}` : ''}\n${nextQuestion?.type === 'select' && nextQuestion.options ? `Options: ${nextQuestion.options.join(', ')}` : ''}`
+            text: `Answer recorded.\n\nNext question: ${nextQuestion?.question || 'No more questions'}\n${nextQuestion?.description ? `Description: ${nextQuestion.description}` : ''}\n${nextQuestion?.type === 'select' && nextQuestion.options ? `Options: ${nextQuestion.options.join(', ')}` : ''}`
           }
         ]
       };
@@ -441,7 +426,7 @@ server.registerTool(
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
           }
         ]
       };
@@ -450,20 +435,51 @@ server.registerTool(
 );
 
 server.registerTool(
-  'check_progress',
+  'get_discovery_results',
   {
-    title: 'Check Progress',
-    description: 'Check the progress of the current elicitation session',
+    title: 'Get Discovery Results',
+    description: 'Get the suggested forms from the discovery session',
     inputSchema: {}
   },
   async () => {
     try {
-      const progress = elicitationEngine.getProgress();
+      const state = elicitationEngine.getDiscoveryState();
+      
+      if (!state) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No active discovery session'
+            }
+          ]
+        };
+      }
+      
+      if (!state.isComplete) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Discovery session is not complete yet. Continue answering questions to get form recommendations.'
+            }
+          ]
+        };
+      }
+
+      const suggestedForms = state.suggestedForms || [];
+      const formsText = suggestedForms.length > 0 
+        ? suggestedForms.map((formId, index) => {
+            const template = getFormTemplate(formId);
+            return `${index + 1}. ${template?.title || formId} (${formId})\n   Description: ${template?.description || 'No description available'}`;
+          }).join('\n\n')
+        : 'No specific forms recommended based on your answers.';
+      
       return {
         content: [
           {
             type: 'text',
-            text: `Elicitation Progress:\n- Answered: ${progress.answered} questions\n- Remaining: ${progress.remaining} questions\n- Total: ${progress.total} questions\n- Completion: ${progress.percentage}%`
+            text: `Discovery Results:\n\n${formsText}`
           }
         ]
       };
@@ -472,7 +488,7 @@ server.registerTool(
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
           }
         ]
       };
@@ -481,20 +497,20 @@ server.registerTool(
 );
 
 server.registerTool(
-  'reset_elicitation',
+  'reset_discovery',
   {
-    title: 'Reset Elicitation',
-    description: 'Reset the current elicitation session',
+    title: 'Reset Discovery',
+    description: 'Reset the current form discovery session',
     inputSchema: {}
   },
   async () => {
     try {
-      elicitationEngine.resetElicitation();
+      elicitationEngine.resetDiscovery();
       return {
         content: [
           {
             type: 'text',
-            text: 'Elicitation session has been reset. Use start_elicitation to begin a new session.'
+            text: 'Form discovery session has been reset. Use start_form_discovery to begin a new session.'
           }
         ]
       };
@@ -503,7 +519,7 @@ server.registerTool(
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
           }
         ]
       };
@@ -515,32 +531,40 @@ server.registerTool(
   'get_form_summary',
   {
     title: 'Get Form Summary',
-    description: 'Get a summary of the completed form data from the elicitation session',
-    inputSchema: {}
+    description: 'Get a summary of a specific form including its purpose and required fields',
+    inputSchema: {
+      form_id: z.enum(getAvailableForms() as [string, ...string[]]).describe('The ID of the form to get summary for'),
+    }
   },
-  async () => {
+  async ({ form_id }) => {
     try {
-      const summary = elicitationEngine.getFormSummary();
-      if (!summary) {
+      const template = getFormTemplate(form_id);
+      if (!template) {
         return {
           content: [
             {
               type: 'text',
-              text: 'No completed form data available. Start an elicitation session and answer all questions first.'
+              text: `Form ${form_id} not found`
             }
           ]
         };
       }
-
-      const formattedSummary = Object.entries(summary.answers)
-        .map(([field, value]) => `${field}: ${value}`)
-        .join('\n');
-
+      
+      const summary = {
+        id: template.id,
+        title: template.title,
+        description: template.description,
+        requiredFields: template.elicitationSchema.required,
+        totalFields: Object.keys(template.elicitationSchema.properties).length,
+        keywords: template.keywords,
+        scenarios: template.scenarios
+      };
+      
       return {
         content: [
           {
             type: 'text',
-            text: `Form Summary for ${summary.formId}:\n\n${formattedSummary}\n\nForm Title: ${summary.formTitle}\nCompletion Status: ${summary.completed ? 'Complete' : 'Incomplete'}`
+            text: `Form Summary for ${form_id}:\n\nTitle: ${summary.title}\nDescription: ${summary.description}\n\nRequired Fields (${summary.requiredFields.length}): ${summary.requiredFields.join(', ')}\nTotal Fields: ${summary.totalFields}\n\nKeywords: ${summary.keywords.join(', ')}\n\nCommon Scenarios:\n${summary.scenarios.map((s, i) => `${i + 1}. ${s}`).join('\n')}`
           }
         ]
       };
@@ -549,7 +573,7 @@ server.registerTool(
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
           }
         ]
       };
