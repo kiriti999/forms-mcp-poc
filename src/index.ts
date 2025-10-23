@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
+  FORM_TEMPLATES,
   getFormTemplate,
   getAvailableForms,
   getFormSuggestions,
@@ -300,6 +301,259 @@ server.registerTool(
         },
       ],
     };
+  }
+);
+
+// Elicitation Tools
+server.registerTool(
+  'start_elicitation',
+  {
+    title: 'Start Elicitation',
+    description: 'Start an interactive form completion session for a specific form',
+    inputSchema: {
+      form_id: z.enum(getAvailableForms() as [string, ...string[]]).describe('The ID of the form to start elicitation for'),
+    }
+  },
+  async ({ form_id }) => {
+    try {
+      const result = elicitationEngine.startElicitation(form_id);
+      if (!result.success) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error starting elicitation: ${result.error}`
+            }
+          ]
+        };
+      }
+
+      const currentQuestion = elicitationEngine.getCurrentQuestion();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Elicitation started for form: ${form_id}\n\nFirst question: ${currentQuestion?.question || 'No questions available'}\n${currentQuestion?.description ? `Description: ${currentQuestion.description}` : ''}\n${currentQuestion?.type === 'select' && currentQuestion.options ? `Options: ${currentQuestion.options.join(', ')}` : ''}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'get_current_question',
+  {
+    title: 'Get Current Question',
+    description: 'Get the current question in the elicitation session',
+    inputSchema: {}
+  },
+  async () => {
+    try {
+      const question = elicitationEngine.getCurrentQuestion();
+      if (!question) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No active elicitation session or no current question available.'
+            }
+          ]
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Current question: ${question.question}\n${question.description ? `Description: ${question.description}` : ''}\n${question.type === 'select' && question.options ? `Options: ${question.options.join(', ')}` : ''}\nRequired: ${question.required ? 'Yes' : 'No'}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'answer_question',
+  {
+    title: 'Answer Question',
+    description: 'Provide an answer to the current question in the elicitation session',
+    inputSchema: {
+      answer: z.string().describe('The answer to the current question'),
+    }
+  },
+  async ({ answer }) => {
+    try {
+      const result = elicitationEngine.processAnswer(answer);
+      
+      if (!result.success) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Invalid answer: ${result.error}`
+            }
+          ]
+        };
+      }
+
+      if (result.completed) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Form completion finished! All questions have been answered. Use get_form_summary to see the completed form data.'
+            }
+          ]
+        };
+      }
+
+      const nextQuestion = elicitationEngine.getCurrentQuestion();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Answer accepted.\n\nNext question: ${nextQuestion?.question || 'No more questions'}\n${nextQuestion?.description ? `Description: ${nextQuestion.description}` : ''}\n${nextQuestion?.type === 'select' && nextQuestion.options ? `Options: ${nextQuestion.options.join(', ')}` : ''}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'check_progress',
+  {
+    title: 'Check Progress',
+    description: 'Check the progress of the current elicitation session',
+    inputSchema: {}
+  },
+  async () => {
+    try {
+      const progress = elicitationEngine.getProgress();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Elicitation Progress:\n- Answered: ${progress.answered} questions\n- Remaining: ${progress.remaining} questions\n- Total: ${progress.total} questions\n- Completion: ${progress.percentage}%`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'reset_elicitation',
+  {
+    title: 'Reset Elicitation',
+    description: 'Reset the current elicitation session',
+    inputSchema: {}
+  },
+  async () => {
+    try {
+      elicitationEngine.resetElicitation();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Elicitation session has been reset. Use start_elicitation to begin a new session.'
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'get_form_summary',
+  {
+    title: 'Get Form Summary',
+    description: 'Get a summary of the completed form data from the elicitation session',
+    inputSchema: {}
+  },
+  async () => {
+    try {
+      const summary = elicitationEngine.getFormSummary();
+      if (!summary) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No completed form data available. Start an elicitation session and answer all questions first.'
+            }
+          ]
+        };
+      }
+
+      const formattedSummary = Object.entries(summary.answers)
+        .map(([field, value]) => `${field}: ${value}`)
+        .join('\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Form Summary for ${summary.formId}:\n\n${formattedSummary}\n\nForm Title: ${summary.formTitle}\nCompletion Status: ${summary.completed ? 'Complete' : 'Incomplete'}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
   }
 );
 
