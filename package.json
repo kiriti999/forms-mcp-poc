@@ -1,0 +1,25 @@
+{
+  "name": "insurance-forms-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "insurance-forms": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x build/index.js",
+    "dev": "tsc --watch",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "pdfkit": "^0.15.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/pdfkit": "^0.12.12",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "build"
+  ]
+}
