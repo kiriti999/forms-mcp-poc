@@ -67,27 +67,81 @@ function testMCPServer() {
       server.stdin.write(JSON.stringify(listToolsMessage) + '\n');
     }, 500);
 
-    // Wait a bit more, then test start_form_discovery
+    // Test 1: Test the enhanced "Find Insurance Forms" tool
     setTimeout(() => {
       const toolCallMessage = {
         jsonrpc: '2.0',
         id: 3,
         method: 'tools/call',
         params: {
-          name: 'start_form_discovery',
+          name: 'suggest_forms',
           arguments: {}
         }
       };
       
-      console.log('📤 Sending start_form_discovery...');
+      console.log('📤 Testing "Find Insurance Forms" (suggest_forms)...');
       server.stdin.write(JSON.stringify(toolCallMessage) + '\n');
     }, 1000);
 
-    // Close after testing
+    // Test 2: Test the enhanced "Help with Insurance" tool
+    setTimeout(() => {
+      const toolCallMessage = {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: {
+          name: 'analyze_intent',
+          arguments: {
+            user_input: "I need to change my beneficiary"
+          }
+        }
+      };
+      
+      console.log('📤 Testing "Help with Insurance" (analyze_intent) with specific intent...');
+      server.stdin.write(JSON.stringify(toolCallMessage) + '\n');
+    }, 1500);
+
+    // Test 3: Test answering a discovery question
+    setTimeout(() => {
+      const toolCallMessage = {
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'tools/call',
+        params: {
+          name: 'answer_discovery_question',
+          arguments: {
+            answer: "Change beneficiary information"
+          }
+        }
+      };
+      
+      console.log('📤 Testing "Continue Insurance Form Discovery" (answer_discovery_question)...');
+      server.stdin.write(JSON.stringify(toolCallMessage) + '\n');
+    }, 2000);
+
+    // Test 4: Test getting a form PDF
+    setTimeout(() => {
+      const toolCallMessage = {
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: {
+          name: 'get_form_pdf',
+          arguments: {
+            form_id: "beneficiary-change"
+          }
+        }
+      };
+      
+      console.log('📤 Testing form PDF retrieval...');
+      server.stdin.write(JSON.stringify(toolCallMessage) + '\n');
+    }, 2500);
+
+    // Close after all testing
     setTimeout(() => {
       server.stdin.end();
       resolve(responses);
-    }, 2000);
+    }, 3500);
 
     server.on('error', reject);
   });
