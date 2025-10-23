@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
     "dev": "tsc --watch",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "terminal": "node intelligent-mcp-client.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
