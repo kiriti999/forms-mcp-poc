@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "insurance-forms": {
+      "command": "node",
+      "args": ["/Users/arjun/eForm-finder-mcp/build/index.js"],
+      "env": {}
+    }
+  }
+}

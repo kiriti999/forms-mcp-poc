@@ -66,6 +66,34 @@ function createHttpServer(): http.Server {
       return;
     }
 
+    // Serve static files (PDFs and demo)
+    if (pathname?.startsWith('/forms/')) {
+      const filePath = path.join(process.cwd(), 'src', pathname);
+      if (fs.existsSync(filePath)) {
+        const fileBuffer = fs.readFileSync(filePath);
+        res.writeHead(200);
+        res.end(fileBuffer);
+      }
+    }
+
+    // Serve demo files from root
+    if (pathname && pathname !== '/') {
+      const demoPath = path.join(process.cwd(), pathname);
+      if (fs.existsSync(demoPath)) {
+        const fileBuffer = fs.readFileSync(demoPath);
+        if (pathname.endsWith('.html')) {
+          res.setHeader('Content-Type', 'text/html');
+        } else if (pathname.endsWith('.js')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        } else if (pathname.endsWith('.css')) {
+          res.setHeader('Content-Type', 'text/css');
+        }
+        res.writeHead(200);
+        res.end(fileBuffer);
+        return;
+      }
+    }
+
     // Health check endpoint
     if (pathname === '/health') {
       res.setHeader('Content-Type', 'application/json');
@@ -112,90 +140,129 @@ server.registerTool(
   }
 );
 
-// Register suggest_forms tool
+// Register suggest_forms tool - now with automatic discovery
 server.registerTool(
   'suggest_forms',
   {
-    title: 'Suggest Forms',
-    description: 'Suggest the most appropriate forms based on user input or context',
+    title: 'Find Insurance Forms',
+    description: 'Automatically find and suggest the best insurance forms based on what the user wants to do. Use this when users mention insurance needs like changing beneficiaries, getting loans, surrendering policies, etc.',
     inputSchema: {
-      user_input: z.string().describe('User description of what they want to do (e.g., "I want to change my beneficiary", "I need a loan against my policy")'),
+      user_input: z.string().describe('What the user wants to do with their insurance (e.g., "I want to change my beneficiary", "I need a loan", "help with my insurance policy")'),
       max_suggestions: z.number().default(3).describe('Maximum number of form suggestions to return (default: 3)'),
     }
   },
   async ({ user_input, max_suggestions }) => {
-    const suggestions = getFormSuggestions(user_input, max_suggestions);
-
-    if (suggestions.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No forms found matching your request: "${user_input}"\n\nPlease try rephrasing your request or use 'list_forms' to see all available forms.`,
-          },
-        ],
-      };
+    const timestamp = new Date().toISOString();
+    console.error(`[${timestamp}] suggest_forms called with user_input: "${user_input}", max_suggestions: ${max_suggestions}`);
+    
+    try {
+      // First, start the discovery process automatically
+      elicitationEngine.startDiscovery();
+      
+      // Get initial suggestions
+      const suggestions = getFormSuggestions(user_input, max_suggestions);
+      console.error(`[${timestamp}] Found ${suggestions.length} form suggestions`);
+      
+      // If we have high-confidence matches, return them directly
+      const highConfidenceMatches = suggestions.filter(s => s.confidence > 0.7);
+      
+      if (highConfidenceMatches.length > 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `I found these forms that match what you're looking for:\n\n${highConfidenceMatches.map((form, index) => 
+                `${index + 1}. **${form.title}**\n   📝 ${form.description}\n   🎯 Match: ${Math.round(form.confidence * 100)}%\n   📄 Form ID: ${form.formId}\n   🔗 Get PDF: Use the get_form_pdf tool with form_id "${form.formId}"`
+              ).join('\n\n')}\n\n💡 **Need help choosing?** I can ask you a few questions to find the perfect form. Just let me know!`
+            }
+          ]
+        };
+      } else {
+        // Start interactive discovery for unclear requests
+        const firstQuestion = elicitationEngine.getCurrentQuestion();
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `I'd like to help you find the right insurance form! Let me ask you a few questions to make sure we get exactly what you need.\n\n**${firstQuestion?.question}**\n\n${firstQuestion?.options ? `Options: ${firstQuestion.options.join(', ')}` : ''}\n\nJust tell me your answer, and I'll guide you to the perfect form!`
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      console.error(`[${timestamp}] ERROR in suggest_forms:`, error);
+      throw error;
     }
-
-    const suggestionText = suggestions
-      .map((suggestion, index) =>
-        `${index + 1}. ${suggestion.title} (${suggestion.formId})\n` +
-        `   Confidence: ${(suggestion.confidence * 100).toFixed(1)}%\n` +
-        `   Description: ${suggestion.description}\n` +
-        `   Matched keywords: ${suggestion.matchedKeywords.join(', ')}\n` +
-        `   PDF: ${suggestion.pdfPath}`
-      )
-      .join('\n\n');
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Form suggestions for: "${user_input}"\n\n${suggestionText}\n\nUse 'get_form_schema' to see required fields or 'get_form_pdf' to retrieve the actual form.`,
-        },
-      ],
-    };
   }
 );
 
-// Register analyze_intent tool
+// Register analyze_intent tool - now with smart auto-discovery
 server.registerTool(
   'analyze_intent',
   {
-    title: 'Analyze Intent',
-    description: 'Analyze user input to understand their intent and provide detailed form recommendations',
+    title: 'Help with Insurance',
+    description: 'Understand what the user wants to do with their insurance and automatically guide them to the right forms and next steps. Use this for any insurance-related questions or requests.',
     inputSchema: {
-      user_input: z.string().describe('User description of what they want to do'),
+      user_input: z.string().describe('What the user is asking about or wants to do with their insurance'),
     }
   },
   async ({ user_input }) => {
-    const context: FormSelectionContext = { userInput: user_input };
-    const suggestions = analyzeUserIntent(context);
-    const bestForm = selectBestForm(context);
-
-    let analysisText = `Intent Analysis for: "${user_input}"\n\n`;
-
-    if (bestForm) {
-      analysisText += `Best Match: ${bestForm.title} (${bestForm.formId})\n`;
-      analysisText += `Confidence: ${(bestForm.confidence * 100).toFixed(1)}%\n`;
-      analysisText += `Matched Keywords: ${bestForm.matchedKeywords.join(', ')}\n\n`;
+    const timestamp = new Date().toISOString();
+    console.error(`[${timestamp}] analyze_intent called with user_input: "${user_input}"`);
+    
+    try {
+      // Automatically start discovery
+      elicitationEngine.startDiscovery();
+      
+      const context: FormSelectionContext = { userInput: user_input };
+      const suggestions = analyzeUserIntent(context);
+      const bestForm = selectBestForm(context);
+      console.error(`[${timestamp}] Intent analysis completed`);
+      
+      // Get form suggestions based on intent
+      const formSuggestions = getFormSuggestions(user_input, 3);
+      const topMatch = formSuggestions[0];
+      
+      if (topMatch && topMatch.confidence > 0.8) {
+        // High confidence - provide direct recommendation
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `I understand you want to: **${user_input}**\n\n🎯 **Perfect Match Found!**\n\n**${topMatch.title}**\n📝 ${topMatch.description}\n🔗 Form ID: ${topMatch.formId}\n\n✅ **Next Steps:**\n1. Use the get_form_pdf tool with form_id "${topMatch.formId}" to get the PDF\n2. Or ask me "How do I fill out this form?" for guidance\n\n💡 **Confidence:** ${Math.round(topMatch.confidence * 100)}% match`
+            }
+          ]
+        };
+      } else if (formSuggestions.length > 0) {
+        // Multiple options - start guided discovery
+        const firstQuestion = elicitationEngine.getCurrentQuestion();
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `I understand you're looking for help with: **${user_input}**\n\nI found a few forms that might work, but let me ask you a question to find the perfect one:\n\n**${firstQuestion?.question}**\n\n${firstQuestion?.options ? `Options: ${firstQuestion.options.join(', ')}` : ''}\n\nJust tell me your answer!`
+            }
+          ]
+        };
+      } else {
+        // No clear matches - start from beginning
+        const firstQuestion = elicitationEngine.getCurrentQuestion();
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `I'd love to help you with your insurance needs! Let me ask you a few questions to find exactly what you're looking for.\n\n**${firstQuestion?.question}**\n\n${firstQuestion?.options ? `Options: ${firstQuestion.options.join(', ')}` : ''}`
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      console.error(`[${timestamp}] ERROR in analyze_intent:`, error);
+      throw error;
     }
-
-    if (suggestions.length > 1) {
-      analysisText += `Alternative Suggestions:\n`;
-      suggestions.slice(1).forEach((suggestion, index) => {
-        analysisText += `${index + 2}. ${suggestion.title} (${(suggestion.confidence * 100).toFixed(1)}%)\n`;
-      });
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: analysisText,
-        },
-      ],
-    };
   }
 );
 
@@ -382,51 +449,97 @@ server.registerTool(
 server.registerTool(
   'answer_discovery_question',
   {
-    title: 'Answer Discovery Question',
-    description: 'Provide an answer to the current discovery question',
+    title: 'Continue Insurance Form Discovery',
+    description: 'Process user responses during form discovery to find the right insurance form. Use this when the user provides answers to questions about their insurance needs.',
     inputSchema: {
-      answer: z.string().describe('The answer to the current discovery question'),
+      answer: z.string().describe('The user\'s answer to the current discovery question'),
     }
   },
   async ({ answer }) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[${timestamp}] answer_discovery_question called with answer: "${answer}"`);
+    
     try {
       const result = elicitationEngine.processAnswer(answer);
+      console.error(`[${timestamp}] Question answered, result:`, result);
       
       if (result.completed) {
         const state = elicitationEngine.getDiscoveryState();
         const suggestedForms = state?.suggestedForms || [];
-        const formsText = suggestedForms.length > 0 
-          ? suggestedForms.map((formId, index) => {
-              const template = getFormTemplate(formId);
-              return `${index + 1}. ${template?.title || formId} (${formId})`;
-            }).join('\n')
-          : 'No specific forms recommended based on your answers.';
+        console.error(`[${timestamp}] Discovery complete, ${suggestedForms.length} suggestions found`);
         
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Discovery session completed!\n\nRecommended forms:\n${formsText}\n\nUse get_form_pdf to retrieve specific forms or get_form_schema to see required fields.`
-            }
-          ]
-        };
+        if (suggestedForms.length === 1) {
+          // Perfect match found
+          const formId = suggestedForms[0];
+          const template = getFormTemplate(formId);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Perfect! Based on your answers, I found exactly what you need:\n\n🎯 **${template?.title || formId}**\n📝 ${template?.description || 'No description available'}\n\n✅ **Ready to proceed:**\n• Form ID: ${formId}\n• Use get_form_pdf with form_id "${formId}" to download the PDF\n• Need help filling it out? Just ask!\n\n🎉 **This form matches your needs perfectly!**`
+              }
+            ]
+          };
+        } else if (suggestedForms.length > 1) {
+          // Multiple good options
+          const formsText = suggestedForms.map((formId, index) => {
+            const template = getFormTemplate(formId);
+            return `${index + 1}. **${template?.title || formId}**\n   📝 ${template?.description || 'No description available'}\n   📄 Form ID: ${formId}\n   🔗 Get PDF: Use get_form_pdf with "${formId}"`;
+          }).join('\n\n');
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Great! Based on your answers, here are your best options:\n\n${formsText}\n\n💡 **Choose the one that fits best, or ask me for more details about any of these forms!**`
+              }
+            ]
+          };
+        } else {
+          // No matches found
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `I've gathered your information, but I couldn't find a perfect match in our current forms. Let me show you all available forms so you can choose:\n\n📋 **Available Forms:**\n${getAvailableForms().map(id => {
+                  const template = getFormTemplate(id);
+                  return `• **${template?.title}** (${id}) - ${template?.description}`;
+                }).join('\n')}\n\n💬 **Need help?** Tell me more about your specific situation and I can provide better guidance!`
+              }
+            ]
+          };
+        }
+      } else {
+        // Continue with next question
+        const nextQuestion = elicitationEngine.getCurrentQuestion();
+        if (nextQuestion) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Thanks for that answer! Let me ask you one more question:\n\n**${nextQuestion.question}**\n\n${nextQuestion.options ? `Options: ${nextQuestion.options.join(', ')}` : ''}\n\n💭 Just tell me your answer and I'll find the perfect form for you!`
+              }
+            ]
+          };
+        } else {
+          // Shouldn't happen, but handle gracefully
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Thank you for your answer! Let me process this and find the best forms for you. Please use the get_discovery_results tool to see your recommendations.`
+              }
+            ]
+          };
+        }
       }
-
-      const nextQuestion = elicitationEngine.getCurrentQuestion();
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Answer recorded.\n\nNext question: ${nextQuestion?.question || 'No more questions'}\n${nextQuestion?.description ? `Description: ${nextQuestion.description}` : ''}\n${nextQuestion?.type === 'select' && nextQuestion.options ? `Options: ${nextQuestion.options.join(', ')}` : ''}`
-          }
-        ]
-      };
     } catch (error) {
+      console.error(`[${timestamp}] ERROR in answer_discovery_question:`, error);
       return {
         content: [
           {
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
+            text: `I encountered an error processing your answer. Please try again or use the reset_discovery tool to start over.`
           }
         ]
       };
@@ -609,57 +722,7 @@ server.registerPrompt(
   }
 );
 
-// Form Completion Guidance
-server.registerPrompt(
-  'complete-insurance-form',
-  {
-    title: 'Complete Insurance Form',
-    description: 'Guide through completing a form',
-    argsSchema: {
-      form_id: z.enum(getAvailableForms() as [string, ...string[]]).describe('Form to complete'),
-      questions: z.string().optional().describe('Specific questions')
-    }
-  },
-  async ({ form_id, questions }) => {
-    return {
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Help me complete the ${form_id} form${questions ? `. Questions: ${questions}` : ''}`
-          }
-        }
-      ]
-    };
-  }
-);
 
-// Form Troubleshooting
-server.registerPrompt(
-  'troubleshoot-form-issue',
-  {
-    title: 'Troubleshoot Form Issue',
-    description: 'Help resolve form problems',
-    argsSchema: {
-      issue: z.string().describe('What problem are you having'),
-      form_id: z.enum(['unknown', ...getAvailableForms()] as [string, ...string[]]).optional().describe('Which form if applicable')
-    }
-  },
-  async ({ issue, form_id }) => {
-    return {
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Help me with this form issue: ${issue}${form_id && form_id !== 'unknown' ? ` (Form: ${form_id})` : ''}`
-          }
-        }
-      ]
-    };
-  }
-);
 
 async function main() {
     // Start HTTP server for PDF serving
