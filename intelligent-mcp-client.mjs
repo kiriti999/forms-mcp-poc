@@ -28,7 +28,7 @@ let conversationHistory = [];
 server.stdout.on('data', (data) => {
   const text = data.toString();
   const lines = text.split('\n').filter(line => line.trim());
-  
+
   for (const line of lines) {
     try {
       const parsed = JSON.parse(line);
@@ -52,7 +52,7 @@ function handleServerResponse(response) {
   } else if (response.result && response.result.content) {
     // Tool execution result - display all content
     console.log('📋 Result:');
-    
+
     if (Array.isArray(response.result.content)) {
       response.result.content.forEach((item, index) => {
         if (item.type === 'text') {
@@ -116,6 +116,7 @@ Available MCP tools:
 ${availableTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
 Tool details:
+- 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
 - suggest_forms: Use when user wants to find forms or start discovery (requires user_input argument with what the user wants to do)
 - analyze_intent: Use when user has a specific insurance question/need (requires user_input argument)
 - answer_discovery_question: Use when user is answering a discovery question (requires answer argument)
@@ -166,13 +167,13 @@ If the user just wants to chat or the query is unclear, respond with:
 
     const data = await response.json();
     const claudeResponse = data.content[0].text;
-    
+
     // Add to conversation history
     conversationHistory.push(
       { role: 'user', content: userMessage },
       { role: 'assistant', content: claudeResponse }
     );
-    
+
     // Keep conversation history manageable
     if (conversationHistory.length > 10) {
       conversationHistory = conversationHistory.slice(-8);
@@ -196,7 +197,7 @@ function sendMCPMessage(method, params) {
     method: method,
     params: params
   };
-  
+
   console.log('📤 Sending to MCP server:', JSON.stringify(message, null, 2)); // Debug log
   server.stdin.write(JSON.stringify(message) + '\n');
 }
@@ -210,7 +211,7 @@ const rl = readline.createInterface({
 async function promptUser() {
   rl.question('💬 You: ', async (input) => {
     const trimmedInput = input.trim();
-    
+
     if (trimmedInput === 'quit' || trimmedInput === 'exit') {
       console.log('👋 Goodbye!');
       server.stdin.end();
@@ -245,9 +246,9 @@ async function promptUser() {
     try {
       console.log('🤔 Thinking...');
       const claudeDecision = await callClaude(trimmedInput);
-      
+
       console.log('💭', claudeDecision.explanation);
-      
+
       if (claudeDecision.tool) {
         console.log('🔧 Calling tool:', claudeDecision.tool);
         sendMCPMessage('tools/call', {
@@ -257,11 +258,11 @@ async function promptUser() {
       } else if (claudeDecision.response) {
         console.log('🤖 Claude:', claudeDecision.response);
       }
-      
+
     } catch (error) {
       console.error('❌ Error:', error.message);
     }
-    
+
     console.log('');
     setTimeout(promptUser, 100);
   });
@@ -271,19 +272,19 @@ async function promptUser() {
 setTimeout(() => {
   console.log('🚀 Intelligent MCP Client Ready!');
   console.log('');
-  
+
   if (!ANTHROPIC_API_KEY) {
     console.log('⚠️  Please set your Anthropic API key:');
     console.log('   setkey your_api_key_here');
     console.log('');
   }
-  
+
   console.log('💡 Tips:');
   console.log('- Ask questions in natural language: "I need to change my beneficiary"');
   console.log('- Type "help" for more information');
   console.log('- Type "quit" to exit');
   console.log('');
-  
+
   promptUser();
 }, 1500);
 

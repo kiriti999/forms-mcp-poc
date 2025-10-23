@@ -9,7 +9,7 @@
     "build": "tsc && chmod +x build/index.js",
     "dev": "tsc --watch",
     "start": "node build/index.js",
-    "terminal": "node intelligent-mcp-client.mjs YGERuVsuAZFQUYe0pnDGMcExJ3aLo6u-A-omym1wAA"
+    "terminal": "node intelligent-mcp-client.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
