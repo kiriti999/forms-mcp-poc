@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 import * as url from 'url';
+import { fileURLToPath } from 'url';
 
 const server = new McpServer(
   {
@@ -314,8 +315,9 @@ server.registerTool(
       throw new Error(`Form template not found: ${form_id}`);
     }
 
-    // Use __dirname to get the directory of the current script, then navigate to src/forms
-    const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+    // Use fileURLToPath for cross-platform compatibility (works on Windows, macOS, and Linux)
+    const scriptPath = fileURLToPath(import.meta.url);
+    const scriptDir = path.dirname(scriptPath);
     const projectRoot = path.resolve(scriptDir, '..');
     const pdfPath = path.join(projectRoot, 'src', 'forms', `${form_id}.pdf`);
     console.error(`[${timestamp}] Script directory: ${scriptDir}`);
